@@ -111,7 +111,8 @@ const char INDEX_HTML[] PROGMEM = R"HTML(
     background: #dc2626;
     padding: 20px 12px;
   }
-  button:active, button.pressed { filter: brightness(0.8); transform: scale(0.98); }
+  button:active { filter: brightness(0.85); transform: scale(0.98); }
+  #fwd.active, #rev.active { box-shadow: 0 0 0 3px #ffffffaa inset; }
   .speed-wrap {
     width: 100%;
     max-width: 360px;
@@ -162,52 +163,53 @@ const char INDEX_HTML[] PROGMEM = R"HTML(
     }
   }
 
+  const fwdBtn = document.getElementById('fwd');
+  const revBtn = document.getElementById('rev');
+  const stopBtn = document.getElementById('stop');
+
+  function setActiveButton(btn) {
+    fwdBtn.classList.remove('active');
+    revBtn.classList.remove('active');
+    if (btn) btn.classList.add('active');
+  }
+
+  // Click FORWARD or REVERSE to start moving in that direction -- it keeps
+  // running (no need to hold the button down) until STOP is pressed or you
+  // switch to the other direction.
   function startDirection(dir, btn) {
     activeDir = dir;
-    btn.classList.add('pressed');
+    setActiveButton(btn);
     const path = dir === 'fwd' ? '/forward' : '/reverse';
     statusEl.textContent = (dir === 'fwd' ? 'forward' : 'reverse') + ' @ ' + speedInput.value + '%';
     send(path + '?speed=' + pct255());
     clearInterval(heartbeat);
-    // Re-send the command periodically. This both updates speed live and
-    // acts as a heartbeat so the ESP32 auto-stops if the connection drops.
+    // Keep re-sending the command on a timer in the background. This both
+    // updates speed live as the slider moves and acts as a heartbeat so the
+    // ESP32 auto-stops the motor if the page loses its connection.
     heartbeat = setInterval(() => {
       if (activeDir === dir) send(path + '?speed=' + pct255());
     }, 250);
   }
 
-  function stopDirection(btn) {
-    if (btn) btn.classList.remove('pressed');
+  function stopDirection() {
+    setActiveButton(null);
     activeDir = null;
     clearInterval(heartbeat);
     statusEl.textContent = 'stopped';
     send('/stop');
   }
 
-  const fwdBtn = document.getElementById('fwd');
-  const revBtn = document.getElementById('rev');
-  const stopBtn = document.getElementById('stop');
+  fwdBtn.addEventListener('click', () => startDirection('fwd', fwdBtn));
+  revBtn.addEventListener('click', () => startDirection('rev', revBtn));
+  stopBtn.addEventListener('click', stopDirection);
 
-  function bindHold(btn, dir) {
-    const start = (e) => { e.preventDefault(); startDirection(dir, btn); };
-    const end = (e) => { e.preventDefault(); stopDirection(btn); };
-    btn.addEventListener('mousedown', start);
-    btn.addEventListener('touchstart', start, { passive: false });
-    btn.addEventListener('mouseup', end);
-    btn.addEventListener('mouseleave', end);
-    btn.addEventListener('touchend', end);
-    btn.addEventListener('touchcancel', end);
-  }
-
-  bindHold(fwdBtn, 'fwd');
-  bindHold(revBtn, 'rev');
-  stopBtn.addEventListener('click', () => stopDirection(null));
-
-  // Safety: if the page is hidden/backgrounded, stop the motor.
+  // Safety: since the motor now keeps running after a single tap, stop it
+  // if the page is hidden/backgrounded or closed so it can't run away
+  // unattended (the 250ms heartbeat above also stops it if WiFi drops).
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) stopDirection(null);
+    if (document.hidden) stopDirection();
   });
-  window.addEventListener('pagehide', () => stopDirection(null));
+  window.addEventListener('pagehide', () => stopDirection());
 </script>
 </body>
 </html>

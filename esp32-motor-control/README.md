@@ -4,9 +4,11 @@ Wirelessly control a 12V DC motor from your phone's browser. The ESP32
 runs an IBT-2 (BTS7960) H-bridge motor driver and hosts its own WiFi
 hotspot with a mobile-friendly control page — **no app install required**.
 
-Controls: press-and-hold **FORWARD** / **REVERSE** buttons, a **STOP**
-button, and a speed slider (0-100%). The motor stops automatically if
-the phone loses the connection or the page is closed/backgrounded.
+Controls: tap **FORWARD** / **REVERSE** to start moving in that
+direction — the motor keeps running with no need to hold the button
+down — a **STOP** button, and a speed slider (0-100%). The motor stops
+automatically if the phone loses the connection or the page is
+closed/backgrounded.
 
 ## Parts list
 
@@ -87,8 +89,10 @@ wiring.
 2. On your phone, connect to the WiFi network `ESP32-Motor` (password
    `motor1234`, unless you changed them).
 3. Open a browser and go to `http://192.168.4.1/`.
-4. Press and hold **FORWARD** or **REVERSE** to drive the motor; adjust
-   the slider for speed; release the button or tap **STOP** to stop.
+4. Tap **FORWARD** or **REVERSE** to start driving the motor in that
+   direction — it keeps running on its own; adjust the slider to change
+   speed while it runs; tap **STOP** (or the other direction button) to
+   stop or switch direction.
 
 ## Notes on the "app"
 
