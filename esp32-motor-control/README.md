@@ -1,14 +1,22 @@
 # ESP32 Wireless 12V Motor Control
 
 Wirelessly control a 12V DC motor from your phone's browser. The ESP32
-runs an IBT-2 (BTS7960) H-bridge motor driver and hosts its own WiFi
-hotspot with a mobile-friendly control page — **no app install required**.
+drives the motor through an IBT-2 (BTS7960) H-bridge module. Two
+interchangeable versions are included — same wiring, same control UI,
+different wireless transport:
 
-Controls: tap **FORWARD** / **REVERSE** to start moving in that
+| | `esp32_motor_control.ino` | `esp32_motor_control_ble.ino` |
+|---|---|---|
+| Transport | WiFi (ESP32 hosts its own hotspot) | Bluetooth Low Energy |
+| Control page | Served by the ESP32 at `192.168.4.1` | `ble_control.html`, opened locally in a Chromium browser |
+| Range | Typical WiFi range | Shorter (typical BLE range) |
+| Phone's internet | Occupied by the ESP32's hotspot (unless using STA mode below) | Free — BLE doesn't use WiFi |
+| Browser support | Any browser | Chrome/Edge/Opera only (Web Bluetooth) — no Safari/iOS |
+
+Both give you: tap **FORWARD** / **REVERSE** to start moving in that
 direction — the motor keeps running with no need to hold the button
 down — a **STOP** button, and a speed slider (0-100%). The motor stops
-automatically if the phone loses the connection or the page is
-closed/backgrounded.
+automatically if the connection drops or the page is closed/backgrounded.
 
 ## Parts list
 
@@ -61,7 +69,7 @@ protection, so no external flyback diode is needed. Still, size your
 and keep the motor's power wiring separate from the ESP32's logic
 wiring.
 
-## Flashing the ESP32
+## Flashing the ESP32 — WiFi version
 
 1. In the Arduino IDE, install **esp32 by Espressif Systems** via
    Boards Manager (version 3.0.0 or newer — the sketch uses the newer
@@ -83,7 +91,7 @@ wiring.
    The password must be at least 8 characters.
 5. Upload.
 
-## Using it
+### Using it
 
 1. Power on the ESP32 and the 12V supply.
 2. On your phone, connect to the WiFi network `ESP32-Motor` (password
@@ -94,17 +102,52 @@ wiring.
    speed while it runs; tap **STOP** (or the other direction button) to
    stop or switch direction.
 
-## Notes on the "app"
+## Flashing the ESP32 — BLE version
 
-This uses a **web app** served directly by the ESP32 rather than a
-native phone app — you get a real control UI on iOS and Android with
-zero installation, and it's simpler and more reliable than building and
-distributing a native app. If you'd rather have a Bluetooth (BLE) based
-control instead of WiFi (e.g. to also connect to your phone's internet
-while driving the motor), that's a different sketch — let me know and
-I can put that together too.
+1. Same Arduino IDE / esp32 core setup as above (the BLE library ships
+   with the esp32 Arduino core, no extra install needed).
+2. Open `esp32_motor_control_ble.ino` instead.
+3. Select your ESP32 board and port under **Tools**.
+4. (Optional) change `BLE_DEVICE_NAME` at the top of the sketch.
+5. Upload.
 
-## Switching to your home WiFi instead of a hotspot
+### Using it
+
+**Option A — `ble_control.html` (recommended, same UI as the WiFi version):**
+
+1. Power on the ESP32 and the 12V supply.
+2. Copy `ble_control.html` to your phone or computer and open it in a
+   **Chromium-based browser** (Chrome, Edge, or Opera — desktop,
+   Android, or ChromeOS). Opening the file directly (double-click, or
+   `chrome://` file picker) works, since Chrome treats local `file://`
+   pages as a secure context for Web Bluetooth. If your Android build
+   won't open it directly, serve it from a quick local server instead
+   (e.g. `python3 -m http.server` in this folder, then browse to it).
+3. Tap **Connect via Bluetooth** and select `ESP32-Motor-BLE` from the
+   device picker.
+4. Tap **FORWARD** / **REVERSE** / **STOP** and use the speed slider —
+   same behavior as the WiFi control page.
+
+   **Not supported on iOS/Safari** — Apple has not implemented Web
+   Bluetooth. On iPhone, use Option B below, or a third-party browser
+   with Bluetooth support (e.g. Bluefy).
+
+**Option B — a generic BLE app (works on any platform, e.g. iOS):**
+
+1. Install a generic BLE tool such as **nRF Connect for Mobile**
+   (iOS/Android).
+2. Scan and connect to `ESP32-Motor-BLE`.
+3. Open the custom service (UUID `b3fdd1d0-...6b01`) and find the
+   command characteristic (UUID `b3fdd1d1-...6b01`).
+4. Write these as text (UTF-8) to that characteristic:
+   - `F200` — forward at speed 200 (0-255)
+   - `R150` — reverse at speed 150
+   - `S` — stop
+5. Optionally subscribe to notifications on the status characteristic
+   (UUID `b3fdd1d2-...6b01`) to see the ESP32's current state
+   (`FWD:200`, `REV:150`, or `STOP`).
+
+## Switching the WiFi version to your home WiFi instead of a hotspot
 
 If you'd rather have the ESP32 join your existing WiFi network (so you
 can control it from any device already on that network) instead of
