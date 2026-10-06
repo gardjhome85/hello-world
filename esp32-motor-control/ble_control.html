@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ESP32 Motor Control (BLE)</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: #14171c;
+    color: #f2f3f5;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+  h1 { font-size: 1.1rem; font-weight: 600; color: #9aa3af; margin: 0 0 24px; letter-spacing: .02em; }
+  #status {
+    font-size: .9rem;
+    color: #6ee7a7;
+    margin-bottom: 20px;
+    min-height: 1.2em;
+    text-align: center;
+  }
+  #status.warn { color: #f5a742; }
+  #status.err { color: #f87171; }
+  #connectBtn {
+    font-size: 1rem;
+    font-weight: 600;
+    padding: 16px 28px;
+    border-radius: 14px;
+    border: none;
+    color: #fff;
+    background: #2563eb;
+    margin-bottom: 24px;
+  }
+  #controls[hidden] { display: none; }
+  .dpad {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+    gap: 16px;
+    width: 100%;
+    max-width: 360px;
+    margin-bottom: 24px;
+  }
+  button {
+    font-size: 1.1rem;
+    font-weight: 600;
+    padding: 28px 12px;
+    border-radius: 16px;
+    border: none;
+    color: #fff;
+    user-select: none;
+    touch-action: manipulation;
+  }
+  #fwd { background: #2563eb; }
+  #rev { background: #7c3aed; }
+  #stop {
+    grid-column: 1 / -1;
+    background: #dc2626;
+    padding: 20px 12px;
+  }
+  button:active { filter: brightness(0.85); transform: scale(0.98); }
+  #fwd.active, #rev.active { box-shadow: 0 0 0 3px #ffffffaa inset; }
+  .speed-wrap {
+    width: 100%;
+    max-width: 360px;
+    text-align: center;
+  }
+  .speed-wrap label { display: block; margin-bottom: 8px; color: #9aa3af; font-size: .9rem; }
+  input[type="range"] { width: 100%; }
+  #speedVal { font-variant-numeric: tabular-nums; }
+  #note {
+    max-width: 360px;
+    margin-top: 28px;
+    font-size: .78rem;
+    line-height: 1.4;
+    color: #6b7280;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <h1>ESP32 MOTOR CONTROL (BLE)</h1>
+  <div id="status">not connected</div>
+
+  <button id="connectBtn">Connect via Bluetooth</button>
+
+  <div id="controls" hidden>
+    <div class="dpad">
+      <button id="fwd">&#9650; FORWARD</button>
+      <button id="rev">&#9660; REVERSE</button>
+      <button id="stop">&#9632; STOP</button>
+    </div>
+
+    <div class="speed-wrap">
+      <label>Speed: <span id="speedVal">60</span>%</label>
+      <input type="range" id="speed" min="0" max="100" value="60">
+    </div>
+  </div>
+
+  <div id="note">
+    Requires a Chromium-based browser (Chrome, Edge, Opera) on Android,
+    desktop, or ChromeOS — Web Bluetooth is not supported in Safari/iOS.
+  </div>
+
+<script>
+  const SERVICE_UUID = 'b3fdd1d0-2c47-4bd6-8f8e-1d6d4d2a6b01';
+  const COMMAND_CHAR_UUID = 'b3fdd1d1-2c47-4bd6-8f8e-1d6d4d2a6b01';
+  const STATUS_CHAR_UUID = 'b3fdd1d2-2c47-4bd6-8f8e-1d6d4d2a6b01';
+
+  const statusEl = document.getElementById('status');
+  const connectBtn = document.getElementById('connectBtn');
+  const controlsEl = document.getElementById('controls');
+  const speedInput = document.getElementById('speed');
+  const speedVal = document.getElementById('speedVal');
+  const fwdBtn = document.getElementById('fwd');
+  const revBtn = document.getElementById('rev');
+  const stopBtn = document.getElementById('stop');
+
+  let device = null;
+  let commandChar = null;
+  let heartbeat = null;
+  let activeDir = null; // 'fwd' | 'rev' | null
+
+  speedInput.addEventListener('input', () => {
+    speedVal.textContent = speedInput.value;
+  });
+
+  function pct255() {
+    return Math.round(speedInput.value * 255 / 100);
+  }
+
+  function setActiveButton(btn) {
+    fwdBtn.classList.remove('active');
+    revBtn.classList.remove('active');
+    if (btn) btn.classList.add('active');
+  }
+
+  async function sendCommand(text) {
+    if (!commandChar) return;
+    try {
+      const bytes = new TextEncoder().encode(text);
+      await commandChar.writeValueWithoutResponse(bytes);
+      statusEl.classList.remove('warn', 'err');
+    } catch (e) {
+      statusEl.textContent = 'write failed: ' + e.message;
+      statusEl.classList.add('err');
+    }
+  }
+
+  // Tap FORWARD/REVERSE to start moving in that direction -- no need to
+  // hold the button down. It keeps running (re-sent every 250ms, which
+  // also acts as a heartbeat and lets the speed slider update live)
+  // until STOP is tapped, the other direction is selected, or the BLE
+  // connection drops.
+  function startDirection(dir, btn) {
+    activeDir = dir;
+    setActiveButton(btn);
+    const prefix = dir === 'fwd' ? 'F' : 'R';
+    statusEl.textContent = (dir === 'fwd' ? 'forward' : 'reverse') + ' @ ' + speedInput.value + '%';
+    sendCommand(prefix + pct255());
+    clearInterval(heartbeat);
+    heartbeat = setInterval(() => {
+      if (activeDir === dir) sendCommand(prefix + pct255());
+    }, 250);
+  }
+
+  function stopDirection() {
+    setActiveButton(null);
+    activeDir = null;
+    clearInterval(heartbeat);
+    statusEl.textContent = 'stopped';
+    sendCommand('S');
+  }
+
+  fwdBtn.addEventListener('click', () => startDirection('fwd', fwdBtn));
+  revBtn.addEventListener('click', () => startDirection('rev', revBtn));
+  stopBtn.addEventListener('click', stopDirection);
+
+  function onDisconnected() {
+    activeDir = null;
+    clearInterval(heartbeat);
+    setActiveButton(null);
+    commandChar = null;
+    controlsEl.hidden = true;
+    connectBtn.hidden = false;
+    statusEl.textContent = 'disconnected';
+    statusEl.classList.add('warn');
+  }
+
+  function handleStatusNotification(event) {
+    const value = new TextDecoder().decode(event.target.value);
+    // Reflects the ESP32's own state, e.g. after its command-timeout
+    // watchdog stops the motor on its own.
+    if (value === 'STOP' && activeDir !== null) {
+      activeDir = null;
+      clearInterval(heartbeat);
+      setActiveButton(null);
+      statusEl.textContent = 'stopped (by device)';
+    }
+  }
+
+  connectBtn.addEventListener('click', async () => {
+    if (!navigator.bluetooth) {
+      statusEl.textContent = 'Web Bluetooth not supported in this browser';
+      statusEl.classList.add('err');
+      return;
+    }
+    try {
+      statusEl.textContent = 'requesting device...';
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{ services: [SERVICE_UUID] }],
+      });
+      device.addEventListener('gattserverdisconnected', onDisconnected);
+
+      statusEl.textContent = 'connecting...';
+      const server = await device.gatt.connect();
+      const service = await server.getPrimaryService(SERVICE_UUID);
+      commandChar = await service.getCharacteristic(COMMAND_CHAR_UUID);
+
+      try {
+        const statusChar = await service.getCharacteristic(STATUS_CHAR_UUID);
+        await statusChar.startNotifications();
+        statusChar.addEventListener('characteristicvaluechanged', handleStatusNotification);
+      } catch (e) {
+        // Status characteristic is optional for control; ignore if unavailable.
+      }
+
+      connectBtn.hidden = true;
+      controlsEl.hidden = false;
+      statusEl.textContent = 'connected';
+      statusEl.classList.remove('warn', 'err');
+    } catch (e) {
+      statusEl.textContent = 'connection failed: ' + e.message;
+      statusEl.classList.add('err');
+    }
+  });
+
+  // Safety: if the page is hidden/backgrounded or closed, stop the motor.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && activeDir !== null) stopDirection();
+  });
+  window.addEventListener('pagehide', () => {
+    if (activeDir !== null) stopDirection();
+  });
+</script>
+</body>
+</html>
