@@ -123,13 +123,13 @@ void notifyStatus() {
 //   "F<speed>"  e.g. "F200" -> forward at speed 0-255
 //   "R<speed>"  e.g. "R150" -> reverse at speed 0-255
 //   "S"         -> stop
-void handleCommand(const std::string &cmd) {
-  if (cmd.empty()) return;
+void handleCommand(const String &cmd) {
+  if (cmd.length() == 0) return;
 
   char c = cmd[0];
   int speed = currentSpeed;
   if (cmd.length() > 1) {
-    speed = atoi(cmd.substr(1).c_str());
+    speed = cmd.substring(1).toInt();
   }
 
   switch (c) {
@@ -155,6 +155,7 @@ void handleCommand(const std::string &cmd) {
 
 class CommandCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *characteristic) override {
+    // getValue() returns an Arduino String on esp32 core 3.x.
     handleCommand(characteristic->getValue());
   }
 };
