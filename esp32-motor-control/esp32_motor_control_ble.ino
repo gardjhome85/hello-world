@@ -26,6 +26,9 @@
  * Safety: the motor is stopped automatically if
  *   (a) no command is received for COMMAND_TIMEOUT_MS, or
  *   (b) the BLE client disconnects.
+ * Speed changes are ramped and a forward/reverse switch pauses at zero
+ * (see RAMP_STEP / DIRECTION_CHANGE_PAUSE_MS); STOP and the fail-safes
+ * cut power immediately.
  */
 
 #include <BLEDevice.h>
@@ -52,6 +55,20 @@ const int PWM_RESOLUTION_BITS = 8; // duty cycle 0-255
 // is running, the motor is stopped automatically (fail-safe).
 const unsigned long COMMAND_TIMEOUT_MS = 800;
 
+// Speed ramping: the PWM duty moves toward the requested speed by
+// RAMP_STEP every RAMP_INTERVAL_MS instead of jumping there at once.
+// With the defaults below, 0 -> full speed takes about 1 second.
+// This avoids current spikes on the 12V supply and jolts on the
+// motor/gearbox. Raise RAMP_STEP (or lower RAMP_INTERVAL_MS) for a
+// snappier response.
+const int RAMP_STEP = 5;                  // duty change per step (0-255 scale)
+const unsigned long RAMP_INTERVAL_MS = 20;
+
+// When switching between forward and reverse, the motor ramps down to
+// zero, then waits this long before ramping up the other way so it is
+// never driven hard against its own spin.
+const unsigned long DIRECTION_CHANGE_PAUSE_MS = 300;
+
 // Custom BLE service/characteristic UUIDs (randomly generated -- unique
 // to this project, not a standard BLE profile).
 #define SERVICE_UUID      "b3fdd1d0-2c47-4bd6-8f8e-1d6d4d2a6b01"
@@ -63,9 +80,17 @@ const unsigned long COMMAND_TIMEOUT_MS = 800;
 BLECharacteristic *statusChar = nullptr;
 bool deviceConnected = false;
 
+// Requested (target) state, set by incoming commands.
 int currentSpeed = 0;      // 0-255
 int currentDirection = 0;  // -1 = reverse, 0 = stopped, 1 = forward
 unsigned long lastCommandMs = 0;
+
+// Output actually applied to the driver, which the ramp moves toward the
+// target. Signed: positive = forward, negative = reverse, 0 = stopped.
+int appliedOutput = 0;
+int lastMovingDirection = 0;    // direction the motor last turned (-1/1)
+unsigned long stoppedSinceMs = 0; // when appliedOutput last reached 0
+unsigned long lastRampMs = 0;
 
 // ---------------------------------------------------------------------
 // Motor driver helpers (identical to the WiFi version)
@@ -81,27 +106,73 @@ void driverInit() {
   ledcWrite(PIN_LPWM, 0);
 }
 
-void motorStop() {
-  ledcWrite(PIN_RPWM, 0);
-  ledcWrite(PIN_LPWM, 0);
-  currentDirection = 0;
-  currentSpeed = 0;
+// Write a signed output (-255..255) straight to the IBT-2.
+void writeOutput(int output) {
+  if (output > 0) {
+    ledcWrite(PIN_LPWM, 0);
+    ledcWrite(PIN_RPWM, output);
+    lastMovingDirection = 1;
+  } else if (output < 0) {
+    ledcWrite(PIN_RPWM, 0);
+    ledcWrite(PIN_LPWM, -output);
+    lastMovingDirection = -1;
+  } else {
+    ledcWrite(PIN_RPWM, 0);
+    ledcWrite(PIN_LPWM, 0);
+    if (appliedOutput != 0) stoppedSinceMs = millis();
+  }
+  appliedOutput = output;
 }
 
+// Immediate stop: cuts PWM at once (no ramp-down). Used for the STOP
+// command and every fail-safe path.
+void motorStop() {
+  currentDirection = 0;
+  currentSpeed = 0;
+  writeOutput(0);
+}
+
+// Forward/reverse only set the target; updateRamp() moves the motor there.
 void motorForward(int speed) {
-  speed = constrain(speed, 0, 255);
-  ledcWrite(PIN_LPWM, 0);
-  ledcWrite(PIN_RPWM, speed);
+  currentSpeed = constrain(speed, 0, 255);
   currentDirection = 1;
-  currentSpeed = speed;
 }
 
 void motorReverse(int speed) {
-  speed = constrain(speed, 0, 255);
-  ledcWrite(PIN_RPWM, 0);
-  ledcWrite(PIN_LPWM, speed);
+  currentSpeed = constrain(speed, 0, 255);
   currentDirection = -1;
-  currentSpeed = speed;
+}
+
+// Call from loop(): steps appliedOutput toward the target every
+// RAMP_INTERVAL_MS, passing through zero (plus a pause) on a direction
+// change.
+void updateRamp() {
+  unsigned long now = millis();
+  if (now - lastRampMs < RAMP_INTERVAL_MS) return;
+  lastRampMs = now;
+
+  int target = currentDirection * currentSpeed;
+  if (appliedOutput == target) return;
+
+  int next;
+  if (appliedOutput == 0) {
+    // Starting from standstill. If this is the opposite direction to the
+    // one we just ran in, wait out the direction-change pause first.
+    int dir = (target > 0) ? 1 : -1;
+    if (dir != lastMovingDirection &&
+        now - stoppedSinceMs < DIRECTION_CHANGE_PAUSE_MS) {
+      return;
+    }
+    next = dir * min(RAMP_STEP, abs(target));
+  } else if ((target > 0) != (appliedOutput > 0) || target == 0) {
+    // Target is zero or the other direction: ramp down to zero first.
+    if (appliedOutput > 0) next = max(appliedOutput - RAMP_STEP, 0);
+    else next = min(appliedOutput + RAMP_STEP, 0);
+  } else {
+    // Same direction, just a speed change.
+    next = appliedOutput + constrain(target - appliedOutput, -RAMP_STEP, RAMP_STEP);
+  }
+  writeOutput(next);
 }
 
 // ---------------------------------------------------------------------
@@ -215,9 +286,12 @@ void setup() {
 void loop() {
   // Fail-safe: stop the motor if the connected client stops sending
   // commands (app backgrounded without disconnecting, etc).
-  if (currentDirection != 0 && (millis() - lastCommandMs > COMMAND_TIMEOUT_MS)) {
+  if ((currentDirection != 0 || appliedOutput != 0) &&
+      millis() - lastCommandMs > COMMAND_TIMEOUT_MS) {
     motorStop();
     notifyStatus();
     Serial.println("Command timeout -- motor stopped for safety.");
   }
+
+  updateRamp();
 }
