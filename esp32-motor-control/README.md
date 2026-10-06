@@ -147,6 +147,32 @@ wiring.
    (UUID `b3fdd1d2-...6b01`) to see the ESP32's current state
    (`FWD:200`, `REV:150`, or `STOP`).
 
+## Compiling from the command line (optional)
+
+If you prefer `arduino-cli` over the Arduino IDE, each sketch needs to
+sit in a folder with the same name as the `.ino` file, so copy them out
+first:
+
+```sh
+arduino-cli config add board_manager.additional_urls \
+  https://espressif.github.io/arduino-esp32/package_esp32_index.json
+arduino-cli core update-index
+arduino-cli core install esp32:esp32
+
+mkdir -p build/esp32_motor_control build/esp32_motor_control_ble
+cp esp32_motor_control.ino build/esp32_motor_control/
+cp esp32_motor_control_ble.ino build/esp32_motor_control_ble/
+
+arduino-cli compile --fqbn esp32:esp32:esp32 build/esp32_motor_control
+arduino-cli compile --fqbn esp32:esp32:esp32 build/esp32_motor_control_ble
+```
+
+Add `--upload -p <port>` (e.g. `-p /dev/ttyUSB0` or `-p COM3`) to
+flash the board in the same step. The BLE sketch is large; if it
+reports "Sketch too big", pick a bigger partition scheme with
+`--board-options PartitionScheme=huge_app` (or **Tools → Partition
+Scheme → Huge APP** in the IDE).
+
 ## Switching the WiFi version to your home WiFi instead of a hotspot
 
 If you'd rather have the ESP32 join your existing WiFi network (so you
