@@ -18,6 +18,13 @@ direction — the motor keeps running with no need to hold the button
 down — a **STOP** button, and a speed slider (0-100%). The motor stops
 automatically if the connection drops or the page is closed/backgrounded.
 
+Speed changes are ramped (about 1 second from stop to full speed) rather
+than applied instantly, and switching between forward and reverse ramps
+down to zero and pauses briefly before spinning up the other way. STOP
+and every fail-safe still cut power immediately. Tune `RAMP_STEP`,
+`RAMP_INTERVAL_MS` and `DIRECTION_CHANGE_PAUSE_MS` at the top of either
+sketch.
+
 ## Parts list
 
 - ESP32 dev board (any variant — ESP32-DevKitC, WROOM-32, etc.)
