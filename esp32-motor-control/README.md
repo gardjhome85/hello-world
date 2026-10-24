@@ -15,8 +15,26 @@ different wireless transport:
 
 Both give you: tap **FORWARD** / **REVERSE** to start moving in that
 direction — the motor keeps running with no need to hold the button
-down — a **STOP** button, and a speed slider (0-100%). The motor stops
+down — a **STOP** button, a speed slider (0-100%), 4 editable preset
+speed buttons, and a background color picker. The motor stops
 automatically if the connection drops or the page is closed/backgrounded.
+
+### Preset speed buttons
+
+Tap one of the 4 preset buttons (default 25/50/75/100%) to jump the
+speed slider straight to that value — if the motor is already running,
+the new speed is sent immediately. Tap **✎ Edit presets**, then tap any
+preset to type in a new value (0-100); tap **Done** to finish editing.
+Your presets are saved in the browser's local storage, so they persist
+across page reloads on that device (per browser/device — they aren't
+synced anywhere).
+
+### Background color
+
+Pick one of the 5 swatches or use the color well for any custom color;
+text color automatically switches between light and dark to stay
+readable against whatever you pick. Also saved in local storage, so it
+persists across reloads on that device.
 
 ## Parts list
 

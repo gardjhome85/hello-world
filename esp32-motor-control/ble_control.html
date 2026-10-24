@@ -5,20 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ESP32 Motor Control (BLE)</title>
 <style>
-  :root { color-scheme: dark; }
+  :root {
+    color-scheme: dark;
+    --bg: #14171c;
+    --fg: #f2f3f5;
+    --muted: #9aa3af;
+  }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body {
     margin: 0;
     min-height: 100vh;
-    background: #14171c;
-    color: #f2f3f5;
+    background: var(--bg);
+    color: var(--fg);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     display: flex;
     flex-direction: column;
     align-items: center;
     padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px));
   }
-  h1 { font-size: 1.1rem; font-weight: 600; color: #9aa3af; margin: 0 0 24px; letter-spacing: .02em; }
+  h1 { font-size: 1.1rem; font-weight: 600; color: var(--muted); margin: 0 0 24px; letter-spacing: .02em; }
   #status {
     font-size: .9rem;
     color: #6ee7a7;
@@ -70,16 +75,70 @@
     width: 100%;
     max-width: 360px;
     text-align: center;
+    margin-bottom: 28px;
   }
-  .speed-wrap label { display: block; margin-bottom: 8px; color: #9aa3af; font-size: .9rem; }
+  .speed-wrap label { display: block; margin-bottom: 8px; color: var(--muted); font-size: .9rem; }
   input[type="range"] { width: 100%; }
   #speedVal { font-variant-numeric: tabular-nums; }
+  .presets {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    width: 100%;
+    max-width: 360px;
+    margin-bottom: 10px;
+  }
+  .preset {
+    padding: 14px 6px;
+    font-size: .95rem;
+    border-radius: 12px;
+    background: #2a2e37;
+    color: var(--fg);
+  }
+  .presets.editing .preset { outline: 2px dashed var(--muted); outline-offset: 2px; }
+  .link-btn {
+    background: none;
+    border: none;
+    padding: 6px 4px;
+    font-size: .8rem;
+    font-weight: 500;
+    color: var(--muted);
+    text-decoration: underline;
+    margin-bottom: 8px;
+  }
+  .panel {
+    width: 100%;
+    max-width: 360px;
+    text-align: center;
+    padding-top: 16px;
+    margin-top: 8px;
+    border-top: 1px solid #ffffff1a;
+  }
+  .panel label { display: block; margin-bottom: 10px; color: var(--muted); font-size: .9rem; }
+  .swatches { display: flex; justify-content: center; gap: 10px; margin-bottom: 10px; }
+  .swatch {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: 50%;
+    border: 2px solid transparent;
+  }
+  .swatch.active { border-color: var(--fg); }
+  #bgPicker {
+    width: 56px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    background: none;
+    cursor: pointer;
+  }
   #note {
     max-width: 360px;
     margin-top: 28px;
     font-size: .78rem;
     line-height: 1.4;
-    color: #6b7280;
+    color: var(--muted);
     text-align: center;
   }
 </style>
@@ -101,6 +160,26 @@
       <label>Speed: <span id="speedVal">60</span>%</label>
       <input type="range" id="speed" min="0" max="100" value="60">
     </div>
+
+    <div class="presets" id="presets">
+      <button class="preset" data-idx="0">25%</button>
+      <button class="preset" data-idx="1">50%</button>
+      <button class="preset" data-idx="2">75%</button>
+      <button class="preset" data-idx="3">100%</button>
+    </div>
+    <button class="link-btn" id="editPresetsBtn">&#9998; Edit presets</button>
+  </div>
+
+  <div class="panel">
+    <label>Background</label>
+    <div class="swatches" id="swatches">
+      <button class="swatch" data-color="#14171c" style="background:#14171c" aria-label="Slate"></button>
+      <button class="swatch" data-color="#0f172a" style="background:#0f172a" aria-label="Navy"></button>
+      <button class="swatch" data-color="#1b2e1f" style="background:#1b2e1f" aria-label="Forest"></button>
+      <button class="swatch" data-color="#3a1414" style="background:#3a1414" aria-label="Maroon"></button>
+      <button class="swatch" data-color="#f4f4f5" style="background:#f4f4f5" aria-label="Light"></button>
+    </div>
+    <input type="color" id="bgPicker" value="#14171c">
   </div>
 
   <div id="note">
@@ -248,6 +327,107 @@
   window.addEventListener('pagehide', () => {
     if (activeDir !== null) stopDirection();
   });
+
+  // ---------------------------------------------------------------
+  // Preset speed buttons (saved on this device via localStorage)
+  // ---------------------------------------------------------------
+  const DEFAULT_PRESETS = [25, 50, 75, 100];
+  const presetButtons = Array.from(document.querySelectorAll('.preset'));
+  const presetsEl = document.getElementById('presets');
+  const editPresetsBtn = document.getElementById('editPresetsBtn');
+  let editingPresets = false;
+
+  function clampPct(n) {
+    n = Math.round(Number(n));
+    if (isNaN(n)) n = 0;
+    return Math.max(0, Math.min(100, n));
+  }
+
+  function loadPresets() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('motorPresets'));
+      if (Array.isArray(saved) && saved.length === 4) return saved.map(clampPct);
+    } catch (e) { /* ignore -- fall back to defaults */ }
+    return DEFAULT_PRESETS.slice();
+  }
+
+  let presets = loadPresets();
+
+  function savePresets() {
+    try { localStorage.setItem('motorPresets', JSON.stringify(presets)); } catch (e) { /* storage unavailable */ }
+  }
+
+  function renderPresets() {
+    presetButtons.forEach((btn, i) => { btn.textContent = presets[i] + '%'; });
+  }
+
+  function applyPreset(i) {
+    speedInput.value = presets[i];
+    speedVal.textContent = presets[i];
+    // If the motor is already running, push the new speed immediately
+    // instead of waiting for the next heartbeat tick.
+    if (activeDir) {
+      const prefix = activeDir === 'fwd' ? 'F' : 'R';
+      statusEl.textContent = (activeDir === 'fwd' ? 'forward' : 'reverse') + ' @ ' + presets[i] + '%';
+      sendCommand(prefix + pct255());
+    }
+  }
+
+  presetButtons.forEach((btn, i) => {
+    btn.addEventListener('click', () => {
+      if (editingPresets) {
+        const val = prompt('Preset ' + (i + 1) + ' speed (0-100%):', presets[i]);
+        if (val !== null) {
+          presets[i] = clampPct(val);
+          savePresets();
+          renderPresets();
+        }
+      } else {
+        applyPreset(i);
+      }
+    });
+  });
+
+  editPresetsBtn.addEventListener('click', () => {
+    editingPresets = !editingPresets;
+    editPresetsBtn.textContent = editingPresets ? 'Done' : '✎ Edit presets';
+    presetsEl.classList.toggle('editing', editingPresets);
+  });
+
+  renderPresets();
+
+  // ---------------------------------------------------------------
+  // Background color (saved on this device via localStorage)
+  // ---------------------------------------------------------------
+  const bgPicker = document.getElementById('bgPicker');
+  const swatchButtons = Array.from(document.querySelectorAll('.swatch'));
+
+  function relativeLuminance(hex) {
+    const c = hex.replace('#', '');
+    const toLin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    const r = toLin(parseInt(c.substring(0, 2), 16));
+    const g = toLin(parseInt(c.substring(2, 4), 16));
+    const b = toLin(parseInt(c.substring(4, 6), 16));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  function applyBackground(hex) {
+    const root = document.documentElement.style;
+    root.setProperty('--bg', hex);
+    const isLight = relativeLuminance(hex) > 0.4;
+    root.setProperty('--fg', isLight ? '#14171c' : '#f2f3f5');
+    root.setProperty('--muted', isLight ? '#52525b' : '#9aa3af');
+    bgPicker.value = hex;
+    swatchButtons.forEach((s) => s.classList.toggle('active', s.dataset.color.toLowerCase() === hex.toLowerCase()));
+    try { localStorage.setItem('motorBg', hex); } catch (e) { /* storage unavailable */ }
+  }
+
+  swatchButtons.forEach((btn) => btn.addEventListener('click', () => applyBackground(btn.dataset.color)));
+  bgPicker.addEventListener('input', () => applyBackground(bgPicker.value));
+
+  let savedBg = '#14171c';
+  try { savedBg = localStorage.getItem('motorBg') || savedBg; } catch (e) { /* storage unavailable */ }
+  applyBackground(savedBg);
 </script>
 </body>
 </html>
