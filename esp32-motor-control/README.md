@@ -16,8 +16,9 @@ different wireless transport:
 Both give you: tap **FORWARD** / **REVERSE** to start moving in that
 direction — the motor keeps running with no need to hold the button
 down — a **STOP** button, a speed slider (0-100%), 4 editable preset
-speed buttons, and a background color picker. The motor stops
-automatically if the connection drops or the page is closed/backgrounded.
+speed buttons, and a customizable background (solid color or your own
+photo). The motor stops automatically if the connection drops or the
+page is closed/backgrounded.
 
 ### Preset speed buttons
 
@@ -29,12 +30,17 @@ Your presets are saved in the browser's local storage, so they persist
 across page reloads on that device (per browser/device — they aren't
 synced anywhere).
 
-### Background color
+### Background: color or your own photo
 
-Pick one of the 5 swatches or use the color well for any custom color;
-text color automatically switches between light and dark to stay
-readable against whatever you pick. Also saved in local storage, so it
-persists across reloads on that device.
+The controls sit on a frosted glass card so they stay readable over
+anything behind them. Pick one of the 5 color swatches or use the
+color well for any custom solid color, or tap **Choose image…** to use
+a photo from your phone or computer instead — it's automatically
+resized and compressed in the browser (max 1600px, JPEG) before being
+saved, so even a large photo stays reasonably small. Tap **Clear
+image** to go back to the solid color. Both are saved in local
+storage, so they persist across reloads on that device (per
+browser/device, not synced to other devices or to the ESP32 itself).
 
 ## Parts list
 

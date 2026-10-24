@@ -8,6 +8,7 @@
   :root {
     color-scheme: dark;
     --bg: #14171c;
+    --bg-image: none;
     --fg: #f2f3f5;
     --muted: #9aa3af;
   }
@@ -15,13 +16,30 @@
   body {
     margin: 0;
     min-height: 100vh;
-    background: var(--bg);
-    color: var(--fg);
+    background-color: var(--bg);
+    background-image: var(--bg-image);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+  .card {
+    width: 100%;
+    max-width: 400px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+    background: rgba(18, 20, 24, 0.62);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    padding: 24px 20px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    color: var(--fg);
   }
   h1 { font-size: 1.1rem; font-weight: 600; color: var(--muted); margin: 0 0 24px; letter-spacing: .02em; }
   #status {
@@ -43,13 +61,13 @@
     background: #2563eb;
     margin-bottom: 24px;
   }
+  #controls { width: 100%; display: flex; flex-direction: column; align-items: center; }
   #controls[hidden] { display: none; }
   .dpad {
     display: grid;
     grid-template-columns: repeat(2, minmax(120px, 1fr));
     gap: 16px;
     width: 100%;
-    max-width: 360px;
     margin-bottom: 24px;
   }
   button {
@@ -73,7 +91,6 @@
   #fwd.active, #rev.active { box-shadow: 0 0 0 3px #ffffffaa inset; }
   .speed-wrap {
     width: 100%;
-    max-width: 360px;
     text-align: center;
     margin-bottom: 28px;
   }
@@ -85,7 +102,6 @@
     grid-template-columns: repeat(4, 1fr);
     gap: 10px;
     width: 100%;
-    max-width: 360px;
     margin-bottom: 10px;
   }
   .preset {
@@ -108,14 +124,13 @@
   }
   .panel {
     width: 100%;
-    max-width: 360px;
     text-align: center;
     padding-top: 16px;
     margin-top: 8px;
     border-top: 1px solid #ffffff1a;
   }
   .panel label { display: block; margin-bottom: 10px; color: var(--muted); font-size: .9rem; }
-  .swatches { display: flex; justify-content: center; gap: 10px; margin-bottom: 10px; }
+  .swatches { display: flex; justify-content: center; gap: 10px; margin-bottom: 14px; }
   .swatch {
     width: 32px;
     height: 32px;
@@ -125,7 +140,7 @@
   }
   .swatch.active { border-color: var(--fg); }
   #bgPicker {
-    width: 56px;
+    width: 44px;
     height: 32px;
     padding: 0;
     border: none;
@@ -133,9 +148,26 @@
     background: none;
     cursor: pointer;
   }
+  .bg-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+  .file-btn {
+    display: inline-block;
+    padding: 8px 14px;
+    font-size: .85rem;
+    font-weight: 500;
+    border-radius: 10px;
+    background: #2a2e37;
+    color: var(--fg);
+    cursor: pointer;
+  }
   #note {
-    max-width: 360px;
-    margin-top: 28px;
+    max-width: 320px;
+    margin-top: 20px;
     font-size: .78rem;
     line-height: 1.4;
     color: var(--muted);
@@ -144,47 +176,54 @@
 </style>
 </head>
 <body>
-  <h1>ESP32 MOTOR CONTROL (BLE)</h1>
-  <div id="status">not connected</div>
+  <div class="card">
+    <h1>ESP32 MOTOR CONTROL (BLE)</h1>
+    <div id="status">not connected</div>
 
-  <button id="connectBtn">Connect via Bluetooth</button>
+    <button id="connectBtn">Connect via Bluetooth</button>
 
-  <div id="controls" hidden>
-    <div class="dpad">
-      <button id="fwd">&#9650; FORWARD</button>
-      <button id="rev">&#9660; REVERSE</button>
-      <button id="stop">&#9632; STOP</button>
+    <div id="controls" hidden>
+      <div class="dpad">
+        <button id="fwd">&#9650; FORWARD</button>
+        <button id="rev">&#9660; REVERSE</button>
+        <button id="stop">&#9632; STOP</button>
+      </div>
+
+      <div class="speed-wrap">
+        <label>Speed: <span id="speedVal">60</span>%</label>
+        <input type="range" id="speed" min="0" max="100" value="60">
+      </div>
+
+      <div class="presets" id="presets">
+        <button class="preset" data-idx="0">25%</button>
+        <button class="preset" data-idx="1">50%</button>
+        <button class="preset" data-idx="2">75%</button>
+        <button class="preset" data-idx="3">100%</button>
+      </div>
+      <button class="link-btn" id="editPresetsBtn">&#9998; Edit presets</button>
     </div>
 
-    <div class="speed-wrap">
-      <label>Speed: <span id="speedVal">60</span>%</label>
-      <input type="range" id="speed" min="0" max="100" value="60">
+    <div class="panel">
+      <label>Background</label>
+      <div class="swatches" id="swatches">
+        <button class="swatch" data-color="#14171c" style="background:#14171c" aria-label="Slate"></button>
+        <button class="swatch" data-color="#0f172a" style="background:#0f172a" aria-label="Navy"></button>
+        <button class="swatch" data-color="#1b2e1f" style="background:#1b2e1f" aria-label="Forest"></button>
+        <button class="swatch" data-color="#3a1414" style="background:#3a1414" aria-label="Maroon"></button>
+        <button class="swatch" data-color="#f4f4f5" style="background:#f4f4f5" aria-label="Light"></button>
+      </div>
+      <div class="bg-row">
+        <input type="color" id="bgPicker" value="#14171c">
+        <label class="file-btn" for="bgImageInput">Choose image&hellip;</label>
+        <input type="file" id="bgImageInput" accept="image/*" hidden>
+        <button class="link-btn" id="clearImageBtn" style="margin-bottom:0">Clear image</button>
+      </div>
     </div>
 
-    <div class="presets" id="presets">
-      <button class="preset" data-idx="0">25%</button>
-      <button class="preset" data-idx="1">50%</button>
-      <button class="preset" data-idx="2">75%</button>
-      <button class="preset" data-idx="3">100%</button>
+    <div id="note">
+      Requires a Chromium-based browser (Chrome, Edge, Opera) on Android,
+      desktop, or ChromeOS — Web Bluetooth is not supported in Safari/iOS.
     </div>
-    <button class="link-btn" id="editPresetsBtn">&#9998; Edit presets</button>
-  </div>
-
-  <div class="panel">
-    <label>Background</label>
-    <div class="swatches" id="swatches">
-      <button class="swatch" data-color="#14171c" style="background:#14171c" aria-label="Slate"></button>
-      <button class="swatch" data-color="#0f172a" style="background:#0f172a" aria-label="Navy"></button>
-      <button class="swatch" data-color="#1b2e1f" style="background:#1b2e1f" aria-label="Forest"></button>
-      <button class="swatch" data-color="#3a1414" style="background:#3a1414" aria-label="Maroon"></button>
-      <button class="swatch" data-color="#f4f4f5" style="background:#f4f4f5" aria-label="Light"></button>
-    </div>
-    <input type="color" id="bgPicker" value="#14171c">
-  </div>
-
-  <div id="note">
-    Requires a Chromium-based browser (Chrome, Edge, Opera) on Android,
-    desktop, or ChromeOS — Web Bluetooth is not supported in Safari/iOS.
   </div>
 
 <script>
@@ -397,37 +436,97 @@
   renderPresets();
 
   // ---------------------------------------------------------------
-  // Background color (saved on this device via localStorage)
+  // Background: solid color or a photo, saved on this device via
+  // localStorage. A photo is downscaled/recompressed client-side
+  // before storing so it fits comfortably in localStorage. Choosing
+  // a color clears any stored photo (they're mutually exclusive --
+  // the photo would otherwise just paint over the solid color).
   // ---------------------------------------------------------------
   const bgPicker = document.getElementById('bgPicker');
+  const bgImageInput = document.getElementById('bgImageInput');
+  const clearImageBtn = document.getElementById('clearImageBtn');
   const swatchButtons = Array.from(document.querySelectorAll('.swatch'));
 
-  function relativeLuminance(hex) {
-    const c = hex.replace('#', '');
-    const toLin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
-    const r = toLin(parseInt(c.substring(0, 2), 16));
-    const g = toLin(parseInt(c.substring(2, 4), 16));
-    const b = toLin(parseInt(c.substring(4, 6), 16));
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  }
-
-  function applyBackground(hex) {
-    const root = document.documentElement.style;
-    root.setProperty('--bg', hex);
-    const isLight = relativeLuminance(hex) > 0.4;
-    root.setProperty('--fg', isLight ? '#14171c' : '#f2f3f5');
-    root.setProperty('--muted', isLight ? '#52525b' : '#9aa3af');
+  function setBgColorVar(hex) {
+    document.documentElement.style.setProperty('--bg', hex);
     bgPicker.value = hex;
     swatchButtons.forEach((s) => s.classList.toggle('active', s.dataset.color.toLowerCase() === hex.toLowerCase()));
-    try { localStorage.setItem('motorBg', hex); } catch (e) { /* storage unavailable */ }
   }
 
-  swatchButtons.forEach((btn) => btn.addEventListener('click', () => applyBackground(btn.dataset.color)));
-  bgPicker.addEventListener('input', () => applyBackground(bgPicker.value));
+  function setBgImageVar(dataUrl) {
+    document.documentElement.style.setProperty('--bg-image', dataUrl ? 'url("' + dataUrl + '")' : 'none');
+  }
 
-  let savedBg = '#14171c';
-  try { savedBg = localStorage.getItem('motorBg') || savedBg; } catch (e) { /* storage unavailable */ }
-  applyBackground(savedBg);
+  function chooseColor(hex) {
+    setBgColorVar(hex);
+    setBgImageVar(null);
+    try {
+      localStorage.setItem('motorBgColor', hex);
+      localStorage.removeItem('motorBgImage');
+    } catch (e) { /* storage unavailable */ }
+  }
+
+  function chooseImage(dataUrl) {
+    setBgImageVar(dataUrl);
+    try { localStorage.setItem('motorBgImage', dataUrl); } catch (e) {
+      alert('Could not save that image (it may be too large for this browser). The background was applied for this session only.');
+    }
+  }
+
+  function clearImage() {
+    setBgImageVar(null);
+    try { localStorage.removeItem('motorBgImage'); } catch (e) { /* storage unavailable */ }
+  }
+
+  // Downscale and re-compress the chosen photo so it stays well within
+  // localStorage's size limits and loads quickly.
+  function loadImageFile(file) {
+    const MAX_DIM = 1600;
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > MAX_DIM || height > MAX_DIM) {
+          const scale = MAX_DIM / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        URL.revokeObjectURL(objectUrl);
+        resolve(canvas.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = (e) => { URL.revokeObjectURL(objectUrl); reject(e); };
+      img.src = objectUrl;
+    });
+  }
+
+  swatchButtons.forEach((btn) => btn.addEventListener('click', () => chooseColor(btn.dataset.color)));
+  bgPicker.addEventListener('input', () => chooseColor(bgPicker.value));
+  clearImageBtn.addEventListener('click', clearImage);
+
+  bgImageInput.addEventListener('change', async () => {
+    const file = bgImageInput.files && bgImageInput.files[0];
+    bgImageInput.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+    try {
+      chooseImage(await loadImageFile(file));
+    } catch (e) {
+      alert('Could not load that image.');
+    }
+  });
+
+  let savedColor = '#14171c';
+  try { savedColor = localStorage.getItem('motorBgColor') || savedColor; } catch (e) { /* storage unavailable */ }
+  setBgColorVar(savedColor);
+
+  try {
+    const savedImage = localStorage.getItem('motorBgImage');
+    if (savedImage) setBgImageVar(savedImage);
+  } catch (e) { /* storage unavailable */ }
 </script>
 </body>
 </html>
